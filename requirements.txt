@@ -1,0 +1,8 @@
+# requirements.txt 파일 내용 (app.py에 필요한 최소한의 패키지)
+fastapi
+uvicorn
+numpy
+sentence-transformers
+firebase-admin
+# Gunicorn을 사용한다면 추가
+gunicorn
