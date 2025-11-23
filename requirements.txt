@@ -1,8 +1,10 @@
-# requirements.txt 파일 내용 (app.py에 필요한 최소한의 패키지)
+# requirements.txt (전체 필수 패키지)
 fastapi
 uvicorn
 numpy
 sentence-transformers
-firebase-admin
-# Gunicorn을 사용한다면 추가
+# Firebase 및 Google API
+firebase-admin 
+google-genai 
+# gunicorn을 Start Command에서 사용한다면
 gunicorn
