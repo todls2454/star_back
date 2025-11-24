@@ -44,8 +44,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 
 # Firebase Admin SDK 파일 경로 설정
-BASE_DIR = os.path.dirname(__file__)
-SERVICE_ACCOUNT_FILE = os.path.join(BASE_DIR, "stellink-b94ac-firebase-adminsdk-fbsvc-c86ad07b09.json")
+SERVICE_ACCOUNT_FILE =  "stellink-b94ac-firebase-adminsdk-fbsvc-c86ad07b09.json"
 
 if not firebase_admin._apps:
     try:
