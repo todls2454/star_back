@@ -9,35 +9,37 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# ===== 0. Gemini 설정 (감정/주제 분석용) =====
+# ===== 0. Gemini 설정 (분석 및 임베딩용) =====
 import google.generativeai as genai
 
 # [주의] API 키는 환경 변수로 설정하거나 안전하게 관리해야 합니다.
-# os.environ.get("GEMINI_API_KEY")를 사용하거나, 실제 키를 설정하세요.
-GEMINI_API_KEY = 'AIzaSyB83EARkSHNRarWsAubDWiihNywP93iawQ' 
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyB83EARkSHNRarWsAubDWiihNywP93iawQ") 
 
 try:
-    if GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
+    if GEMINI_API_KEY and GEMINI_API_KEY != "YOUR_GEMINI_API_KEY_HERE":
         genai.configure(api_key=GEMINI_API_KEY)
 except Exception as e:
     print(f"Gemini 설정 실패: {e}")
 
-# ===== 1. SBERT (한국어 임베딩) =====
-from sentence_transformers import SentenceTransformer
-try:
-    sbert_model = SentenceTransformer("jhgan/ko-sroberta-multitask")
-except Exception as e:
-    print(f"SBERT 모델 로드 실패: {e}")
-    sbert_model = None
+# ===== 1. Gemini Embedding (SBERT 대체) =====
 
 def get_embedding(text: str) -> List[float]:
-    if sbert_model is None:
-        raise RuntimeError("SBERT 모델이 로드되지 않았습니다.")
-    emb = sbert_model.encode(text, convert_to_numpy=True)
-    return emb.astype(np.float32).tolist()
+    """Gemini API를 사용하여 텍스트 임베딩 벡터를 생성합니다."""
+    if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+        raise RuntimeError("Gemini API 키가 없어 임베딩을 생성할 수 없습니다.")
+    
+    try:
+        response = genai.embed_content(
+            model='models/text-embedding-004',
+            content=text,
+            task_type="RETRIEVAL_DOCUMENT"
+        )
+        return response["embedding"]
+    except Exception as e:
+        raise RuntimeError(f"Gemini 임베딩 API 호출 오류: {e}")
 
 
-# ===== 2. Firestore 초기화 =====
+# ===== 2. Firestore 초기화 (유지) =====
 import firebase_admin
 from firebase_admin import credentials, firestore
 
@@ -56,7 +58,7 @@ db = firestore.client()
 COLLECTION_NAME = "posts" 
 
 
-# ===== 3. Pydantic 모델 =====
+# ===== 3. Pydantic 모델 (유지) =====
 
 class PostIn(BaseModel):
     content: str
@@ -68,13 +70,13 @@ class PostOut(BaseModel):
     similar: List[Dict] 
 
 
-# ===== 4. Gemini 분석 유틸리티 =====
+# ===== 4. Gemini 분석 유틸리티 (기본값 제거) =====
 
 def classify_text_with_gemini(text: str):
     """일기 텍스트를 Gemini를 이용해 감정 및 주제로 분류합니다."""
-    if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE" or not GEMINI_API_KEY:
-        print("Gemini API 키가 없어 기본값 반환")
-        return "평온", ["일상"]
+    if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+        # [수정] 기본값 반환 대신 오류 발생
+        raise RuntimeError("Gemini API 키가 설정되지 않아 분석할 수 없습니다.")
         
     try:
         model = genai.GenerativeModel("gemini-2.5-flash")
@@ -90,21 +92,25 @@ def classify_text_with_gemini(text: str):
             - 일기 텍스트의 핵심만 반영.
             """
         )
-        # Timeout 추가 (Gemini 호출 실패 방지)
         resp = model.generate_content([system_prompt, f"일기:\n{text}"])
         t = (resp.text or "").strip()
         
-        # JSON 파싱 시도 및 예외 처리
         try:
             data = json.loads(t)
         except Exception:
             m = re.search(r"\{.*\}", t, flags=re.S)
             if not m:
+                # [수정] 파싱 실패 시 오류 발생
                 raise RuntimeError("Gemini 분류 응답 파싱 실패")
             data = json.loads(m.group(0))
 
-        emotion = data.get("emotion", "평온")
-        topics = data.get("topics", ["일상"])
+        # 응답이 유효하지 않아도 기본값 대신 오류 발생 (제거된 부분)
+        emotion = data.get("emotion") 
+        topics = data.get("topics")
+        
+        if not emotion or not topics:
+            raise RuntimeError("Gemini 분석 결과에 emotion 또는 topics가 누락되었습니다.")
+        
         if isinstance(topics, str):
             topics = [topics]
             
@@ -112,12 +118,14 @@ def classify_text_with_gemini(text: str):
         
     except Exception as e:
         print(f"🚨 Gemini 분석 오류 발생: {e}")
-        return "평온", ["일상"]
+        # [수정] 오류 발생 시 기본값 반환 대신 다시 예외 발생
+        raise RuntimeError(f"Gemini API 호출 중 오류 발생: {e}")
 
 
-# ===== 5. Firestore 유틸리티 및 유사도 계산 =====
+# ===== 5. Firestore 유틸리티 및 유사도 계산 (유지) =====
 
 def ensure_embedding_for_doc(doc_ref, data: dict) -> Optional[np.ndarray]:
+    # ... (유지) ...
     emb_list = data.get("embedding")
     if emb_list:
         return np.array(emb_list, dtype=np.float32)
@@ -127,16 +135,19 @@ def ensure_embedding_for_doc(doc_ref, data: dict) -> Optional[np.ndarray]:
         return None
 
     try:
+        # [수정]: Gemini API 호출로 임베딩 생성
         emb = get_embedding(content)
-    except RuntimeError:
+    except RuntimeError as e:
+        print(f"임베딩 생성 중 오류: {e}")
         return None
         
-    # [주의] Firestore 업데이트는 쓰기 비용이 발생하므로, 필요할 때만 호출해야 합니다.
-    # doc_ref.update({"embedding": emb}) 
-    return np.array(emb, dtype=np.float32)
+    emb_np = np.array(emb, dtype=np.float32)
+    doc_ref.update({"embedding": emb}) 
+    return emb_np
 
 
 def fetch_corpus_embeddings(exclude_id: Optional[str] = None):
+    # ... (유지) ...
     try:
         docs = db.collection(COLLECTION_NAME).stream()
     except Exception as e:
@@ -151,7 +162,6 @@ def fetch_corpus_embeddings(exclude_id: Optional[str] = None):
 
         data = doc.to_dict() or {}
         doc_ref = db.collection(COLLECTION_NAME).document(doc_id)
-        # 임베딩이 없으면 생성(및 저장) 시도
         emb = ensure_embedding_for_doc(doc_ref, data) 
         if emb is None:
             continue
@@ -174,12 +184,12 @@ def fetch_corpus_embeddings(exclude_id: Optional[str] = None):
 
 
 def topk_similar(query_emb: np.ndarray, items, k: int = 5):
+    # ... (유지) ...
     q = query_emb.astype(np.float32)
     qn = np.linalg.norm(q) + 1e-9
 
     sims = []
     for _id, preview, emb, emotion, tags in items:
-        # 코사인 유사도 계산
         s = float(np.dot(q, emb) / (qn * (np.linalg.norm(emb) + 1e-9)))
         sims.append((_id, s, preview, emotion, tags))
 
@@ -191,13 +201,12 @@ def topk_similar(query_emb: np.ndarray, items, k: int = 5):
         for _id, score, preview, _, _ in top
     ]
     
-    # 유사도 계산 함수는 유사 포스트 목록만 반환 (감정/주제는 Gemini가 담당)
     return similar_for_response
 
 
 # ===== 6. FastAPI 앱 및 엔드포인트 수정 =====
 
-app = FastAPI(title="Diary Constellation (Firestore + SBERT + Gemini)")
+app = FastAPI(title="Diary Constellation (Firestore + Gemini Embeddings)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -211,7 +220,7 @@ app.add_middleware(
 @app.post("/posts", response_model=PostOut)
 def create_post(post: PostIn):
     """
-    1) Gemini로 감정/주제 분석, 2) SBERT로 임베딩, 3) 유사도 비교 결과를 반환합니다.
+    1) Gemini로 감정/주제 분석, 2) Gemini로 임베딩, 3) 유사도 비교 결과를 반환합니다.
     """
     txt = post.content.strip()
     if not txt:
@@ -221,21 +230,21 @@ def create_post(post: PostIn):
         # 1. Gemini로 감정/주제 분석
         emotion, topics = classify_text_with_gemini(txt)
         
-        # 2. 쿼리 텍스트 임베딩
-        q_emb = np.array(get_embedding(txt), dtype=np.float32)
+        # 2. 쿼리 텍스트 임베딩 (Gemini 사용)
+        q_emb_list = get_embedding(txt)
+        q_emb = np.array(q_emb_list, dtype=np.float32)
         
-    except Exception as e:
-        raise HTTPException(500, f"Analysis error (Gemini/SBERT): {e}")
+    except RuntimeError as e:
+        # [수정] Gemini API 호출/분석 실패 시 500 에러 발생
+        raise HTTPException(500, detail=f"Analysis/Embedding failed: {e}")
 
     # 3. 기존 코퍼스 불러오기
     items = fetch_corpus_embeddings(exclude_id=None)
     
     # 4. 유사도 계산
     if not items:
-        # 코퍼스가 비어 있으면, Gemini 분석 결과만 반환
         return {"id": "query", "emotion": emotion, "topics": topics, "similar": []}
 
-    # 유사 포스트 목록만 반환 받음
     similar = topk_similar(q_emb, items, k=5)
     
     # id를 'query'로 반환 (Flutter 앱에서 저장 시 새로운 ID를 부여해야 함)
