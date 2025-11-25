@@ -27,7 +27,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 POST_ANALYSIS_MODEL = "gemini-2.5-flash" 
 
 # Hugging Face 모델 설정
-HUGGINGFACE_MODEL_NAME = "snunlp/KR-ELECTRA-discriminator" 
+HUGGINGFACE_MODEL_NAME = "jhgan/ko-sbert-nli" 
 embedding_model_instance = None
 db = None
 
