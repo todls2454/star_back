@@ -13,7 +13,6 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 from google.cloud.firestore import FieldFilter
 
-# ✅ [추가] Gemini SDK (가벼움)
 import google.generativeai as genai
 
 # --- 설정 및 초기화 ---
@@ -23,10 +22,9 @@ POSTS_COLLECTION = "posts"
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "") 
 
 # Gemini 모델 설정
-POST_ANALYSIS_MODEL = "gemini-1.5-flash" # 2.5가 아직 불안정하다면 1.5 사용 권장
+POST_ANALYSIS_MODEL = "gemini-2.5-flash" # 2.5가 아직 불안정하다면 1.5 사용 권장
 EMBEDDING_MODEL = "models/text-embedding-004" # Gemini 전용 임베딩 모델
 
-# ✅ Gemini 초기화
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
