@@ -32,7 +32,7 @@ embedding_model_instance = None
 db = None
 
 # 추천 설정
-RECOMMENDATION_THRESHOLD = 0.6  # 코사인 유사도 임계값을 0.4로 유지합니다.
+RECOMMENDATION_THRESHOLD = 0.6  # 코사인 유사도 임계값
 MAX_RECOMMENDATIONS = 8        # 최대 추천 개수
 
 
@@ -234,7 +234,7 @@ def _perform_recommendation_logic(
             
         combined_similarity = sum(similarity_scores) / len(similarity_scores)
 
-        # 4. 임계값(0.4) 이상인 포스트만 후보에 추가
+        # 4. 임계값(0.6) 이상인 포스트만 후보에 추가
         if combined_similarity >= RECOMMENDATION_THRESHOLD:
             recommendations.append({
                 "post_id": past_post_id,
@@ -251,6 +251,28 @@ def _perform_recommendation_logic(
     final_recommendations = recommendations[:MAX_RECOMMENDATIONS]
     
     return final_recommendations
+
+
+# --------------------------------------------------------------------------------
+# [0단계] 상태 확인 엔드포인트 (GET /health)
+# --------------------------------------------------------------------------------
+@app.get("/health", summary="서버 상태 확인")
+def health_check():
+    """서버의 상태와 주요 컴포넌트의 로드 상태를 반환합니다."""
+    db_status = "OK" if db is not None else "ERROR"
+    model_status = "OK" if embedding_model_instance is not None else "ERROR"
+    
+    if db_status == "OK" and model_status == "OK":
+        status_code = status.HTTP_200_OK
+    else:
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    return {
+        "status": "Running" if status_code == status.HTTP_200_OK else "Degraded",
+        "db_connection": db_status,
+        "embedding_model": model_status,
+        "model_name": HUGGINGFACE_MODEL_NAME,
+    }, status_code
 
 
 # --------------------------------------------------------------------------------
