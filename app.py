@@ -6,7 +6,7 @@ from typing import List, Dict, Any, Optional
 
 # [필요 라이브러리]
 # pip install fastapi uvicorn firebase-admin numpy scipy pydantic requests sentence-transformers
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status # status 임포트 오류 수정됨
 from pydantic import BaseModel, Field
 from scipy.spatial.distance import cosine
 from sentence_transformers import SentenceTransformer
@@ -107,7 +107,7 @@ def extract_topic_and_emotion(original_content: str) -> Dict[str, str]:
     if not GEMINI_API_KEY:
         return {"topic": "API 키 오류", "emotion_tag": "오류"}
 
-    # (Gemini API 호출 로직은 이전 파일과 동일합니다.)
+    # (Gemini API 호출 로직)
     system_prompt = (
         "당신은 사용자의 일기/포스트를 분석하는 AI 분석가입니다. "
         "다음 한국어 일기의 핵심 주제(topic) 한 줄과, 주된 감정(emotion_tag) 한 단어를 "
